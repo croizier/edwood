@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0">
+	<start>
+		<ref name="any-element" />
+	</start>
+
+	<define name="any-element">
+		<element>
+			<anyName />
+			<group>
+				<zeroOrMore>
+					<attribute>
+						<anyName />
+						<text />
+					</attribute>
+				</zeroOrMore>
+				<zeroOrMore>
+					<interleave>
+						<zeroOrMore>
+							<ref name="any-element" />
+						</zeroOrMore>
+						<text />
+					</interleave>
+				</zeroOrMore>
+			</group>
+		</element>
+	</define>
+</grammar>

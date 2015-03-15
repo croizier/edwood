@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"><start><ref name="element1"/></start><define name="element1"><element><name ns="">foo</name><data datatypeLibrary="" type="token"><except><choice><choice><value datatypeLibrary="" type="token" ns="TODO">x</value><value datatypeLibrary="" type="token" ns="TODO">y</value></choice><value datatypeLibrary="" type="token" ns="TODO">z</value></choice></except></data></element></define></grammar>

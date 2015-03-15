@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"><start><choice><choice><ref name="element1"/><ref name="element2"/></choice><ref name="element3"/></choice></start><define name="element1"><element><name ns="">foo1</name><empty/></element></define><define name="element2"><element><name ns="">foo2</name><empty/></element></define><define name="element3"><element><name ns="">foo3</name><empty/></element></define></grammar>

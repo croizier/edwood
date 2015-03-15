@@ -1,0 +1,36 @@
+<grammar xmlns="http://relaxng.org/ns/structure/1.0">
+	<start>
+		<ref name="a"/>
+	</start>
+
+	<define name="a">
+		<element>
+			<name ns="">a</name>
+			<group>
+				<ref name="b"/>
+				<ref name="c"/>
+			</group>
+		</element>
+	</define>
+	
+	<define name="b">
+		<element>
+			<name ns="">b</name>
+			<data type="boolean"
+				datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes"
+			/>
+		</element>
+	</define>
+	
+	<define name="c">
+		<element>
+			<name ns="">c</name>
+			<attribute>
+				<name ns="">d</name>
+				<data type="integer"
+					datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes"
+				/>
+			</attribute>
+		</element>
+	</define>
+</grammar>

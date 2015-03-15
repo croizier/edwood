@@ -1,0 +1,1 @@
+<element xmlns="http://relaxng.org/ns/structure/1.0" name="foo" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">  <element name="bar">    <choice>      <value>x</value>      <value>y</value>    </choice>  </element>  <element name="baz"><empty/></element></element>

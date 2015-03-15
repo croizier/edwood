@@ -1,0 +1,12 @@
+{
+  "name": "edwood",
+  "version": "0.1.0",
+  "description": "Library for building in-browser schema-aware XML editors",
+  "license" : "MIT",
+  "main": "edwood.js",
+  "ignore": [ ".*", "*/", "package.json", "README.md", "webpack.config.js" ],
+  "repository": { "type": "git", "url": "git://github.com/croizier/edwood.git" },
+  "dependencies": {
+    "react": "0.13.0"
+  }
+}

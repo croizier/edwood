@@ -1,0 +1,11 @@
+<grammar xmlns="http://relaxng.org/ns/structure/1.0">  <start combine="
+ 	choice
+ 	">    <ref name="
+ 	x
+ 	"/>  </start>  <define name="x">    <ref name="y"/>  </define>  <define name="
+ 	y
+ 	">    <grammar>      <start combine="
+ 	interleave
+ 	">        <parentRef name="
+ 	z
+ 	"/>      </start>    </grammar>  </define>  <define name="z">    <element name="foo">      <empty/>    </element>  </define></grammar>
