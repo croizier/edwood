@@ -17,7 +17,7 @@
   },
   "scripts": {
     "build": "npm run compile && npm run node && npm run phantom",
-    "compile": "node ./node_modules/typescript/bin/tsc --removeComments  --noImplicitAny --outDir tmp --target ES5 --module commonjs src/test-node.ts src/test-phantom.ts",
+    "compile": "node ./node_modules/typescript/bin/tsc --removeComments  --noImplicitAny --outDir tmp --target ES5 --module commonjs src/ui.ts src/test-node.ts src/test-phantom.ts",
     "index": "node node_modules/webpack/bin/webpack.js --output-library-target=\"umd\" --output-library=\"edwood\" tmp/ui.js edwood.js",
     "node": "node tmp/test-node.js",
     "lint": "node ./node_modules/tslint/bin/tslint -c src/tslint.json -f edwood.d.ts -f src/dom.ts -f src/grammar.ts -f src/hashing.ts -f src/library.ts -f src/parser.ts -f src/pattern.ts -f src/phantomjs.d.ts -f src/test-node.ts -f src/test-phantom.ts -f src/ui.ts",
