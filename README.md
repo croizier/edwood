@@ -1,4 +1,4 @@
-# Edwood: in-browser schema-aware XML editors
+# Edwood [![Build Status](https://api.travis-ci.org/croizier/edwood.svg?branch=master)](https://travis-ci.org/croizier/edwood) [![Bower version](https://badge.fury.io/bo/edwood.svg)](http://badge.fury.io/bo/edwood) [![npm version](https://badge.fury.io/js/edwood.svg)](http://badge.fury.io/js/edwood)
 
 Edwood is a JavaScript library for building in-browser schema-aware XML editors.
 
