@@ -11,28 +11,39 @@ function pe(e: dom.Element): ProxyElement {
     return <ProxyElement>e;
 }
 
-// implementations of api.Node wrap a native node with some expandos:
-// _proxy: the wrapping object
-// _pattern: the pattern that this node must validate against
-// _content: the pattern that the node content must validate against
-
-function wrapAttr(a: Attr) {
-    if ((<any>a)._proxy) return (<any>a)._proxy;
-    var p = new ProxyAttr(a);
-    (<any>a)._proxy = p;
-    return p;
+// information attached to native nodes during validation
+interface Info {
+    proxy: ProxyNode; // proxy to the node
+    content: pat.Pattern; // pattern that must validate the content of the node
+    pattern: pat.Pattern; // pattern that must validate the whole node
+    result: pat.Pattern; // result of the last validation of the node
 }
 
-function wrapElement(e: Element) {
-    if ((<any>e)._proxy) return (<any>e)._proxy;
-    var p = new ProxyElement(e);
-    (<any>e)._proxy = p;
-    return p;
+// get info of the node, after initializing it if it is not there yet
+function info(node: Node): Info {
+    var n: any = node;
+    if (!n._psvi) n._psvi = {
+        proxy: null, content: null, pattern: null, result: null };
+    return n._psvi;
 }
 
-function proxy(n: Node): ProxyNode {
-    return (<any>n)._proxy;
+function wrapAttr(a: Attr): ProxyAttr {
+    var i = info(a);
+    if (!i.proxy) i.proxy = new ProxyAttr(a);
+    return <ProxyAttr>i.proxy;
 }
+
+function wrapElement(e: Element): ProxyElement {
+    var i = info(e);
+    if (!i.proxy) i.proxy = new ProxyElement(e);
+    return <ProxyElement>i.proxy;
+}
+
+var errorAttr = (a: Attr, message: dom.Message) =>
+    <dom.Error>{ attribute: wrapAttr(a), element: null, message: message };
+
+var errorElem = (e: Element, message: dom.Message) =>
+    <dom.Error>{ attribute: null, element: wrapElement(e), message: message};
 
 var proxyCount = 1;
 
@@ -44,7 +55,7 @@ class ProxyAttr implements dom.Attr, ProxyNode {
     key = ':' + proxyCount++;
     version = 1;
     constructor(public node: Attr) {
-        (<any>node)._proxy = this;
+        info(node).proxy = this;
     }
 
     get localName() {
@@ -69,7 +80,7 @@ class ProxyAttr implements dom.Attr, ProxyNode {
 
     allows(text: string) {
         var a = this.node;
-        var p = <pat.Pattern>((<any>a)._pattern);
+        var p = info(a).pattern;
         if (!p) return true;
         var qn = p.fac.qname(a.namespaceURI || '', a.localName);
         return p.att(qn, text) !== p.fac.notAllowed;
@@ -81,7 +92,7 @@ class ProxyElement implements dom.Element, ProxyNode {
     key = ':' + proxyCount++;
     version = 1;
     constructor(public node: Element) {
-        (<any>node)._proxy = this;
+        info(node).proxy = this;
     }
 
     get localName() {
@@ -141,7 +152,7 @@ class ProxyElement implements dom.Element, ProxyNode {
     }
 
     allows(text: string) {
-        var p = <pat.Pattern>((<any>this.node)._content);
+        var p = info(this.node).content;
         if (!p) return true;
         return p.text(text) !== p.fac.notAllowed;
     }
@@ -153,7 +164,7 @@ class ProxyElement implements dom.Element, ProxyNode {
         for (var i = 0; i < as.length; i++) {
             var a = as.item(i);
             var b = wrapAttr(a);
-            if (!filter || filter(b)) ts.push(mapper ? mapper(b, i) : <T>b);
+            if (!filter || filter(b)) ts.push(mapper ? mapper(b, i) : <any>b);
         }
         return ts;
     }
@@ -164,21 +175,21 @@ class ProxyElement implements dom.Element, ProxyNode {
         var ts: T[] = [];
         for (var c = this.node.firstElementChild; c; c = c.nextElementSibling) {
             var e = wrapElement(c);
-            if (!filter || filter(e)) ts.push(mapper ? mapper(e, i++) : <T>e);
+            if (!filter || filter(e)) ts.push(mapper ? mapper(e, i++) : <any>e);
         }
         return ts;
     }
 }
 
 class ProxyDocument implements dom.Document {
-    node: Document;
     private pattern: pat.Pattern;
     private error: dom.Error;
     private changeActions: Array<() => void> = [];
+    doc: Document;
     version = 1;
     constructor(xml: string, rng: string) {
-        this.node = new DOMParser().parseFromString(xml, 'application/xml');
-        (<any>this.node)._proxy = this;
+        this.doc = new DOMParser().parseFromString(xml, 'application/xml');
+        (<any>this.doc)._proxy = this;
 
         var doc = new DOMParser().parseFromString(rng, 'application/xml');
         this.pattern = gra.parse(doc.documentElement);
@@ -186,10 +197,10 @@ class ProxyDocument implements dom.Document {
     }
 
     get documentElement() {
-        return wrapElement(this.node.documentElement);
+        return wrapElement(this.doc.documentElement);
     }
     createElement(namespace: string, qualifiedName: string): dom.Element {
-        var res = this.node.createElementNS(namespace, qualifiedName);
+        var res = this.doc.createElementNS(namespace, qualifiedName);
         return wrapElement(res);
     }
 
@@ -199,183 +210,144 @@ class ProxyDocument implements dom.Document {
     onChange(action: () => void) {
         this.changeActions.push(action);
     }
-    emitChange() {
-        this.changeActions.forEach(a => a());
-    }
     serialize(): string {
-        return new XMLSerializer().serializeToString(this.node);
+        return new XMLSerializer().serializeToString(this.doc);
     }
-    changeAncestors(n: dom.Node) {
+    change(node: dom.Node): void {
+        var first = this.error && (this.error.attribute || this.error.element);
+        if (first) this.changeAncestors(first);
+        this.changeAncestors(node);
+        this.validate();
+        this.emitChange();
+    }
+    // increment version and invalidate result of ancestors or self
+    private changeAncestors(n: dom.Node) {
         n.version += 1;
         var p = (<ProxyNode>n).node;
+        info(p).result = null;
         p = p instanceof Attr ? p.ownerElement : p.parentNode;
-        while (p !== this.node) {
-            var q = proxy(p);
+        while (p !== this.doc) {
+            var i = info(p);
+            i.result = null;
+            var q = i.proxy;
             if (q) q.version += 1;
             p = p.parentNode;
         }
         this.version += 1;
     }
-    validate(): void {
-        var n: Node = this.node.documentElement;
-        var p = this.pattern;
-        var e = <Element>(n.parentNode);
+    private emitChange() {
+        this.changeActions.forEach(a => a());
+    }
+    private validate(): void {
+        var element = this.doc.documentElement;
+        this.error = this.validateElement(element, this.pattern);
+    }
+    private validateElement(e: Element, p: pat.Pattern): dom.Error {
+        var i = info(e);
+        // incremental validation optimization:
+        // if the pattern has not changed since the last validation and
+        // the element was valid and we know the validation result,
+        // then we don't need to process it again nor its subtree
+        if (i.pattern === p && i.result) return null;
 
-        while (true) {
-            switch (n.nodeType) {
-                case Node.ELEMENT_NODE:
-                    this.setp(n, p);
+        // set the element pattern and invalidate its result
+        i.pattern = p;
+        i.result = null;
 
-                    // open start tag
-                    p = p.start(p.fac.qname(n.namespaceURI || '', n.localName));
-                    if (p === p.fac.notAllowed) {
-                        this.setElementError(n, dom.Message.UNEXPECTED_ELEMENT);
-                        return;
-                    }
+        var no = p.fac.notAllowed;
+        // open start tag
+        p = p.start(p.fac.qname(e.namespaceURI || '', e.localName));
+        if (p === no) return errorElem(e, dom.Message.WRONG_ELEMENT);
 
-                    // validate attributes
-                    for (var i = 0; i < n.attributes.length; i++) {
-                        var a = n.attributes.item(i);
-                        this.setp(a, p);
+        // validate attributes
+        for (var j = 0; j < e.attributes.length; j++) {
+            var a = e.attributes.item(j);
 
-                        // ignore xmlns pseudo-attributes
-                        if (a.name === 'xmlns' ||
-                            a.name.match(/^xmlns:/)) continue;
+            // ignore xmlns pseudo-attributes
+            if (a.name === 'xmlns' || a.name.match(/^xmlns:/)) continue;
 
-                        // set pattern for current attribute
-                        (<any>a)._pattern = p;
+            // set pattern for current attribute
+            info(a).pattern = p;
 
-                        // validate the attribute
-                        var qn = p.fac.qname(a.namespaceURI || '', a.localName);
-                        p = p.att(qn, a.value);
-                        if (p === p.fac.notAllowed) {
-                            this.setAttrError(a, dom.Message.WRONG_ATTRIBUTE);
-                            return;
-                        }
-                    }
+            // validate the attribute
+            var qn = p.fac.qname(a.namespaceURI || '', a.localName);
+            p = p.att(qn, a.value);
+            if (p === no) return errorAttr(a, dom.Message.WRONG_ATTRIBUTE);
+        }
 
-                    // close start tag 
-                    p = p.close();
-                    if (p === p.fac.notAllowed) {
-                        this.setElementError(n, dom.Message.MISSING_ATTRIBUTE);
-                        return;
-                    }
+        // close start tag 
+        p = p.close();
+        if (p === no) return errorElem(e, dom.Message.MISSING_ATTRIBUTE);
 
-                    // set content pattern for current element
-                    (<any>n)._content = p;
+        // set content pattern for current element
+        i.content = p;
 
-                    if (!(<Element>n).firstElementChild) {
-                        // element contains only text, process it
-                        p = this.deriveText(p, n.textContent);
-                        if (p === p.fac.notAllowed) {
-                            this.setElementError(n, dom.Message.WRONG_DATA);
-                            return;
-                        }
-
-                        // and move to the end of the element
-                        e = <Element>n;
-                        n = null;
-                    } else {
-                        // element contains elements, move its first child
-                        e = <Element>n;
-                        n = n.firstChild;
-                    }
-
-                    break;
-                case Node.TEXT_NODE:
-                    var merged = this.mergeTextNodes(n);
-                    n = merged.node;
-                    p = this.deriveText(p, merged.text);
-                    if (p === p.fac.notAllowed) {
-                        this.setElementError(e, dom.Message.WRONG_DATA);
-                        return;
-                    }
-                    break;
-                case Node.COMMENT_NODE:
-                case Node.PROCESSING_INSTRUCTION_NODE:
-                    // ignore it
-                    break;
-                case Node.ATTRIBUTE_NODE:
-                case Node.DOCUMENT_NODE:
-                case Node.DOCUMENT_TYPE_NODE:
-                case Node.DOCUMENT_FRAGMENT_NODE:
-                    // this algorithm should never reach those nodes here
-                    throw new Error('impossible node type: ' + n.nodeType);
-                default:
-                    // obsolete or totally unknown nodes
-                    throw new Error('unexpected node type: ' + n.nodeType);
-            }
-
-            while (!n) {
-                // no more children in this element
-
-                // process end tag of parent
-                p = p.end();
-                if (p === p.fac.notAllowed) {
-                    this.setElementError(e, dom.Message.MISSING_CONTENT);
-                    return;
-                }
-
-                if (e !== this.node.documentElement) {
-                    // move up to parent
-                    n = e;
-                    e = <Element>(n.parentNode);
-
-                    // continue the walk with next sibling
-                    n = n.nextSibling;
-                } else {
-                    // we have reached the end of the document
-                    if (p.nullable()) {
-                        this.error = null;
-                    } else {
-                        this.setElementError(e, dom.Message.EOF);
-                    }
-                    return;
+        // check whether element is text-only or has element children
+        if (!e.firstElementChild) {
+            // element contains only text
+            p = this.deriveText(p, e.textContent);
+            if (p === no) return errorElem(e, dom.Message.DATA);
+        } else {
+            // element contains elements, and maybe also mixed content
+            for (var n = e.firstChild; n; n = n.nextSibling) {
+                switch (n.nodeType) {
+                    case Node.ELEMENT_NODE:
+                        var error = this.validateElement(<Element>n, p);
+                        if (error) return error;
+                        p = info(n).result;
+                        break;
+                    case Node.TEXT_NODE:
+                        var merged = this.mergeTextNodes(n);
+                        p = this.deriveText(p, merged.text);
+                        if (p === no) return errorElem(e, dom.Message.DATA);
+                        n = merged.node;
+                        break;
+                    case Node.COMMENT_NODE:
+                    case Node.PROCESSING_INSTRUCTION_NODE:
+                        // ignore it
+                        break;
+                    case Node.ATTRIBUTE_NODE:
+                    case Node.DOCUMENT_NODE:
+                    case Node.DOCUMENT_TYPE_NODE:
+                    case Node.DOCUMENT_FRAGMENT_NODE:
+                        // this algorithm should never reach those nodes here
+                        throw new Error('impossible node type: ' + n.nodeType);
+                    default:
+                        // obsolete or totally unknown nodes
+                        throw new Error('unknown node type: ' + n.nodeType);
                 }
             }
         }
+
+        // process end tag
+        p = p.end();
+        if (p === no) return errorElem(e, dom.Message.MISSING_CONTENT);
+
+        // the element is valid; cache the result, hoping to reuse it next time
+        i.result = p;
+        return null;
     }
     private deriveText(p: pat.Pattern, text: string): pat.Pattern {
         var p1 = p.text(text);
         return text.match(/^\s*$/) ? p.fac.choice(p, p1) : p1;
     }
-    // advance node to the first element if any, ignoring non-text nodes
+    // merge text nodes, moving to the last one, ignoring comments and PIs
     // return concatenation of all text nodes traversed
     private mergeTextNodes(node: Node): { text: string; node: Node } {
         var text = '';
-        while (node && node.nodeType !== Node.ELEMENT_NODE) {
+        while (true) {
             if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
-            node = node.nextSibling;
+            var next = node.nextSibling;
+            var ok = next && next.nodeType !== Node.ELEMENT_NODE;
+            if (ok) node = next; else break;
         }
         return { text: text, node: node };
-    }
-    private setElementError(node: Node, message: dom.Message): void {
-        this.error = {
-            attribute: null,
-            element: wrapElement(<Element>node),
-            message: message
-        };
-    }
-    private setAttrError(node: Node, message: dom.Message): void {
-        this.error = {
-            attribute: wrapAttr(<Attr>node),
-            element: null,
-            message: message
-        };
-    }
-    private getp(node: Node) {
-        return (<any>node)._pattern;
-    }
-    private setp(node: Node, pattern: pat.Pattern) {
-        (<any>node)._pattern = pattern;
     }
 }
 
 function change(node: dom.Node) {
-    var doc = <ProxyDocument>node.ownerDocument;
-    doc.changeAncestors(node);
-    doc.validate();
-    doc.emitChange();
+    var doc =  <ProxyDocument>node.ownerDocument;
+    doc.change(node);
 }
 
 export function parse(xml: string, rng: string): dom.Document {

@@ -250,11 +250,38 @@ function testDom() {
     assert(t8.length === 0);
 }
 
+function benchValidation() {
+    var i = 0, t0 = 0, t1 = 0;
+
+    t0 = new Date().getTime();
+    var xml = '';
+    xml += '<a>';
+    for (i = 0; i < 1000; i++) xml += '<b/>';
+    xml += '</a>';
+    t1 = new Date().getTime();
+    console.log(t1 - t0);
+
+    var rng = fs.open('data/any.xml', 'r').read();
+    t0 = new Date().getTime();
+    var doc = parser.parse(xml, rng);
+    t1 = new Date().getTime();
+    console.log(t1 - t0);
+    assert(!doc.getError());
+
+    var bs = doc.documentElement.elements();
+
+    t0 = new Date().getTime();
+    for (i = 0; i < 1000; i++) bs[i].textContent = 'foo';
+    t1 = new Date().getTime();
+    console.log(t1 - t0);
+}
+
 try {
     testGrammar();
     testValidation();
     testBigSchemas();
-    run(testDom);
+    testDom();
+//    benchValidation();
 } catch (e) {
     var stack = (<Error>e).stack.replace(/^[^\(]+?[\n$]/gm, '')
         .replace(/^\s+at\s+/gm, '')

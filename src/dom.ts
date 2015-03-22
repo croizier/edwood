@@ -38,11 +38,11 @@ export interface Element extends Node {
 
 export enum Message {
     EOF = 1,
-    UNEXPECTED_ELEMENT,
+    DATA,
     MISSING_ATTRIBUTE,
     MISSING_CONTENT,
     WRONG_ATTRIBUTE,
-    WRONG_DATA,
+    WRONG_ELEMENT,
 }
 
 export interface Error {

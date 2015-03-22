@@ -149,11 +149,11 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	(function (Message) {
 	    Message[Message["EOF"] = 1] = "EOF";
-	    Message[Message["UNEXPECTED_ELEMENT"] = 2] = "UNEXPECTED_ELEMENT";
+	    Message[Message["DATA"] = 2] = "DATA";
 	    Message[Message["MISSING_ATTRIBUTE"] = 3] = "MISSING_ATTRIBUTE";
 	    Message[Message["MISSING_CONTENT"] = 4] = "MISSING_CONTENT";
 	    Message[Message["WRONG_ATTRIBUTE"] = 5] = "WRONG_ATTRIBUTE";
-	    Message[Message["WRONG_DATA"] = 6] = "WRONG_DATA";
+	    Message[Message["WRONG_ELEMENT"] = 6] = "WRONG_ELEMENT";
 	})(exports.Message || (exports.Message = {}));
 	var Message = exports.Message;
 
@@ -173,30 +173,38 @@ return /******/ (function(modules) { // webpackBootstrap
 	function pe(e) {
 	    return e;
 	}
+	function info(node) {
+	    var n = node;
+	    if (!n._psvi)
+	        n._psvi = {
+	            proxy: null,
+	            content: null,
+	            pattern: null,
+	            result: null
+	        };
+	    return n._psvi;
+	}
 	function wrapAttr(a) {
-	    if (a._proxy)
-	        return a._proxy;
-	    var p = new ProxyAttr(a);
-	    a._proxy = p;
-	    return p;
+	    var i = info(a);
+	    if (!i.proxy)
+	        i.proxy = new ProxyAttr(a);
+	    return i.proxy;
 	}
 	function wrapElement(e) {
-	    if (e._proxy)
-	        return e._proxy;
-	    var p = new ProxyElement(e);
-	    e._proxy = p;
-	    return p;
+	    var i = info(e);
+	    if (!i.proxy)
+	        i.proxy = new ProxyElement(e);
+	    return i.proxy;
 	}
-	function proxy(n) {
-	    return n._proxy;
-	}
+	var errorAttr = function (a, message) { return { attribute: wrapAttr(a), element: null, message: message }; };
+	var errorElem = function (e, message) { return { attribute: null, element: wrapElement(e), message: message }; };
 	var proxyCount = 1;
 	var ProxyAttr = (function () {
 	    function ProxyAttr(node) {
 	        this.node = node;
 	        this.key = ':' + proxyCount++;
 	        this.version = 1;
-	        node._proxy = this;
+	        info(node).proxy = this;
 	    }
 	    Object.defineProperty(ProxyAttr.prototype, "localName", {
 	        get: function () {
@@ -239,7 +247,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    });
 	    ProxyAttr.prototype.allows = function (text) {
 	        var a = this.node;
-	        var p = (a._pattern);
+	        var p = info(a).pattern;
 	        if (!p)
 	            return true;
 	        var qn = p.fac.qname(a.namespaceURI || '', a.localName);
@@ -252,7 +260,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        this.node = node;
 	        this.key = ':' + proxyCount++;
 	        this.version = 1;
-	        node._proxy = this;
+	        info(node).proxy = this;
 	    }
 	    Object.defineProperty(ProxyElement.prototype, "localName", {
 	        get: function () {
@@ -332,7 +340,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        change(child);
 	    };
 	    ProxyElement.prototype.allows = function (text) {
-	        var p = (this.node._content);
+	        var p = info(this.node).content;
 	        if (!p)
 	            return true;
 	        return p.text(text) !== p.fac.notAllowed;
@@ -364,21 +372,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	    function ProxyDocument(xml, rng) {
 	        this.changeActions = [];
 	        this.version = 1;
-	        this.node = new DOMParser().parseFromString(xml, 'application/xml');
-	        this.node._proxy = this;
+	        this.doc = new DOMParser().parseFromString(xml, 'application/xml');
+	        this.doc._proxy = this;
 	        var doc = new DOMParser().parseFromString(rng, 'application/xml');
 	        this.pattern = gra.parse(doc.documentElement);
 	        this.validate();
 	    }
 	    Object.defineProperty(ProxyDocument.prototype, "documentElement", {
 	        get: function () {
-	            return wrapElement(this.node.documentElement);
+	            return wrapElement(this.doc.documentElement);
 	        },
 	        enumerable: true,
 	        configurable: true
 	    });
 	    ProxyDocument.prototype.createElement = function (namespace, qualifiedName) {
-	        var res = this.node.createElementNS(namespace, qualifiedName);
+	        var res = this.doc.createElementNS(namespace, qualifiedName);
 	        return wrapElement(res);
 	    };
 	    ProxyDocument.prototype.getError = function () {
@@ -387,112 +395,102 @@ return /******/ (function(modules) { // webpackBootstrap
 	    ProxyDocument.prototype.onChange = function (action) {
 	        this.changeActions.push(action);
 	    };
-	    ProxyDocument.prototype.emitChange = function () {
-	        this.changeActions.forEach(function (a) { return a(); });
-	    };
 	    ProxyDocument.prototype.serialize = function () {
-	        return new XMLSerializer().serializeToString(this.node);
+	        return new XMLSerializer().serializeToString(this.doc);
+	    };
+	    ProxyDocument.prototype.change = function (node) {
+	        var first = this.error && (this.error.attribute || this.error.element);
+	        if (first)
+	            this.changeAncestors(first);
+	        this.changeAncestors(node);
+	        this.validate();
+	        this.emitChange();
 	    };
 	    ProxyDocument.prototype.changeAncestors = function (n) {
 	        n.version += 1;
 	        var p = n.node;
+	        info(p).result = null;
 	        p = p instanceof Attr ? p.ownerElement : p.parentNode;
-	        while (p !== this.node) {
-	            var q = proxy(p);
+	        while (p !== this.doc) {
+	            var i = info(p);
+	            i.result = null;
+	            var q = i.proxy;
 	            if (q)
 	                q.version += 1;
 	            p = p.parentNode;
 	        }
 	        this.version += 1;
 	    };
+	    ProxyDocument.prototype.emitChange = function () {
+	        this.changeActions.forEach(function (a) { return a(); });
+	    };
 	    ProxyDocument.prototype.validate = function () {
-	        var n = this.node.documentElement;
-	        var p = this.pattern;
-	        var e = (n.parentNode);
-	        while (true) {
-	            switch (n.nodeType) {
-	                case Node.ELEMENT_NODE:
-	                    this.setp(n, p);
-	                    p = p.start(p.fac.qname(n.namespaceURI || '', n.localName));
-	                    if (p === p.fac.notAllowed) {
-	                        this.setElementError(n, 2 /* UNEXPECTED_ELEMENT */);
-	                        return;
-	                    }
-	                    for (var i = 0; i < n.attributes.length; i++) {
-	                        var a = n.attributes.item(i);
-	                        this.setp(a, p);
-	                        if (a.name === 'xmlns' || a.name.match(/^xmlns:/))
-	                            continue;
-	                        a._pattern = p;
-	                        var qn = p.fac.qname(a.namespaceURI || '', a.localName);
-	                        p = p.att(qn, a.value);
-	                        if (p === p.fac.notAllowed) {
-	                            this.setAttrError(a, 5 /* WRONG_ATTRIBUTE */);
-	                            return;
-	                        }
-	                    }
-	                    p = p.close();
-	                    if (p === p.fac.notAllowed) {
-	                        this.setElementError(n, 3 /* MISSING_ATTRIBUTE */);
-	                        return;
-	                    }
-	                    n._content = p;
-	                    if (!n.firstElementChild) {
-	                        p = this.deriveText(p, n.textContent);
-	                        if (p === p.fac.notAllowed) {
-	                            this.setElementError(n, 6 /* WRONG_DATA */);
-	                            return;
-	                        }
-	                        e = n;
-	                        n = null;
-	                    }
-	                    else {
-	                        e = n;
-	                        n = n.firstChild;
-	                    }
-	                    break;
-	                case Node.TEXT_NODE:
-	                    var merged = this.mergeTextNodes(n);
-	                    n = merged.node;
-	                    p = this.deriveText(p, merged.text);
-	                    if (p === p.fac.notAllowed) {
-	                        this.setElementError(e, 6 /* WRONG_DATA */);
-	                        return;
-	                    }
-	                    break;
-	                case Node.COMMENT_NODE:
-	                case Node.PROCESSING_INSTRUCTION_NODE:
-	                    break;
-	                case Node.ATTRIBUTE_NODE:
-	                case Node.DOCUMENT_NODE:
-	                case Node.DOCUMENT_TYPE_NODE:
-	                case Node.DOCUMENT_FRAGMENT_NODE:
-	                    throw new Error('impossible node type: ' + n.nodeType);
-	                default:
-	                    throw new Error('unexpected node type: ' + n.nodeType);
-	            }
-	            while (!n) {
-	                p = p.end();
-	                if (p === p.fac.notAllowed) {
-	                    this.setElementError(e, 4 /* MISSING_CONTENT */);
-	                    return;
-	                }
-	                if (e !== this.node.documentElement) {
-	                    n = e;
-	                    e = (n.parentNode);
-	                    n = n.nextSibling;
-	                }
-	                else {
-	                    if (p.nullable()) {
-	                        this.error = null;
-	                    }
-	                    else {
-	                        this.setElementError(e, 1 /* EOF */);
-	                    }
-	                    return;
+	        var element = this.doc.documentElement;
+	        this.error = this.validateElement(element, this.pattern);
+	    };
+	    ProxyDocument.prototype.validateElement = function (e, p) {
+	        var i = info(e);
+	        if (i.pattern === p && i.result)
+	            return null;
+	        i.pattern = p;
+	        i.result = null;
+	        var no = p.fac.notAllowed;
+	        p = p.start(p.fac.qname(e.namespaceURI || '', e.localName));
+	        if (p === no)
+	            return errorElem(e, 6 /* WRONG_ELEMENT */);
+	        for (var j = 0; j < e.attributes.length; j++) {
+	            var a = e.attributes.item(j);
+	            if (a.name === 'xmlns' || a.name.match(/^xmlns:/))
+	                continue;
+	            info(a).pattern = p;
+	            var qn = p.fac.qname(a.namespaceURI || '', a.localName);
+	            p = p.att(qn, a.value);
+	            if (p === no)
+	                return errorAttr(a, 5 /* WRONG_ATTRIBUTE */);
+	        }
+	        p = p.close();
+	        if (p === no)
+	            return errorElem(e, 3 /* MISSING_ATTRIBUTE */);
+	        i.content = p;
+	        if (!e.firstElementChild) {
+	            p = this.deriveText(p, e.textContent);
+	            if (p === no)
+	                return errorElem(e, 2 /* DATA */);
+	        }
+	        else {
+	            for (var n = e.firstChild; n; n = n.nextSibling) {
+	                switch (n.nodeType) {
+	                    case Node.ELEMENT_NODE:
+	                        var error = this.validateElement(n, p);
+	                        if (error)
+	                            return error;
+	                        p = info(n).result;
+	                        break;
+	                    case Node.TEXT_NODE:
+	                        var merged = this.mergeTextNodes(n);
+	                        p = this.deriveText(p, merged.text);
+	                        if (p === no)
+	                            return errorElem(e, 2 /* DATA */);
+	                        n = merged.node;
+	                        break;
+	                    case Node.COMMENT_NODE:
+	                    case Node.PROCESSING_INSTRUCTION_NODE:
+	                        break;
+	                    case Node.ATTRIBUTE_NODE:
+	                    case Node.DOCUMENT_NODE:
+	                    case Node.DOCUMENT_TYPE_NODE:
+	                    case Node.DOCUMENT_FRAGMENT_NODE:
+	                        throw new Error('impossible node type: ' + n.nodeType);
+	                    default:
+	                        throw new Error('unknown node type: ' + n.nodeType);
 	                }
 	            }
 	        }
+	        p = p.end();
+	        if (p === no)
+	            return errorElem(e, 4 /* MISSING_CONTENT */);
+	        i.result = p;
+	        return null;
 	    };
 	    ProxyDocument.prototype.deriveText = function (p, text) {
 	        var p1 = p.text(text);
@@ -500,40 +498,23 @@ return /******/ (function(modules) { // webpackBootstrap
 	    };
 	    ProxyDocument.prototype.mergeTextNodes = function (node) {
 	        var text = '';
-	        while (node && node.nodeType !== Node.ELEMENT_NODE) {
+	        while (true) {
 	            if (node.nodeType === Node.TEXT_NODE)
 	                text += node.textContent;
-	            node = node.nextSibling;
+	            var next = node.nextSibling;
+	            var ok = next && next.nodeType !== Node.ELEMENT_NODE;
+	            if (ok)
+	                node = next;
+	            else
+	                break;
 	        }
 	        return { text: text, node: node };
-	    };
-	    ProxyDocument.prototype.setElementError = function (node, message) {
-	        this.error = {
-	            attribute: null,
-	            element: wrapElement(node),
-	            message: message
-	        };
-	    };
-	    ProxyDocument.prototype.setAttrError = function (node, message) {
-	        this.error = {
-	            attribute: wrapAttr(node),
-	            element: null,
-	            message: message
-	        };
-	    };
-	    ProxyDocument.prototype.getp = function (node) {
-	        return node._pattern;
-	    };
-	    ProxyDocument.prototype.setp = function (node, pattern) {
-	        node._pattern = pattern;
 	    };
 	    return ProxyDocument;
 	})();
 	function change(node) {
 	    var doc = node.ownerDocument;
-	    doc.changeAncestors(node);
-	    doc.validate();
-	    doc.emitChange();
+	    doc.change(node);
 	}
 	function parse(xml, rng) {
 	    return new ProxyDocument(xml, rng);

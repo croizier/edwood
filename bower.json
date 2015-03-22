@@ -1,6 +1,5 @@
 {
   "name": "edwood",
-  "version": "0.1.1",
   "description": "Library for building in-browser schema-aware XML editors",
   "license" : "MIT",
   "main": "edwood.js",
