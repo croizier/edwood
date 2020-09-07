@@ -7,7 +7,7 @@
   "main": "index.js",
   "repository": { "type": "git", "url": "https://github.com/croizier/edwood.git" },
   "dependencies": {
-    "react": "^0.13.0"
+    "react": "0.14.0"
   },
   "devDependencies": {
     "phantomjs": "^1.9.15",
